@@ -1,14 +1,16 @@
 /* =========================================================
-   Брояч на продадени продукти от CSV
-   Без външни библиотеки. Всичко в браузъра.
-   Поддържани колони (синоними):
-   - Продукт:  ["продукт","артикул","име","product","item","product name"]
-   - Количество: ["количество","брой","брой продажби","qty","quantity"]
-   - Дата: ["дата","date"]
-   - Продуктова група: ["продуктова група","група","категория","product group","group","category"]
-   - Продуктов клас: ["продуктов клас","клас","product class","class","grade"]
+   Брояч на продадени продукти от CSV + Предложения
+   Всичко в браузъра, без външни библиотеки.
 ========================================================= */
 
+/* ---------- Настройки за предложения (можеш да ги пипнеш) ---------- */
+const LOOKBACK_DAYS = 30;   // прозорец за "бързооборотни"
+const COVERAGE_DAYS = 14;   // покритие за предложена минимална наличност
+const MIN_QTY_FAST = 5;     // минимум продажби за 30 дни, за да се счита "бързооборотен"
+const TOP_N_FAST = 20;      // максимум броя предложения за наличност
+const MAX_ISSUE_ROWS = 50;  // максимум показвани редове с проблеми
+
+/* ---------- Елементи ---------- */
 const els = {
   alert: document.getElementById('alert'),
   dropzone: document.getElementById('dropzone'),
@@ -24,6 +26,13 @@ const els = {
   rowsAll: document.getElementById('rowsAll'),
   rowsFiltered: document.getElementById('rowsFiltered'),
   tableBody: document.getElementById('tableBody'),
+
+  // suggestions UI
+  suggestionsSection: document.getElementById('suggestionsSection'),
+  fastCount: document.getElementById('fastCount'),
+  issueCount: document.getElementById('issueCount'),
+  suggestLoadBody: document.getElementById('suggestLoadBody'),
+  suggestDiscardBody: document.getElementById('suggestDiscardBody'),
 };
 
 const state = {
@@ -79,6 +88,8 @@ function readFile(file) {
       state.headers = headers;
       populateFilterOptions(rows);
       render();
+      // suggestions след първоначално зареждане
+      renderSuggestions(rows);
       if (!headers.product || !headers.qty) {
         showAlert(
           'Не открих задължителни колони <strong>Продукт</strong> и/или <strong>Количество</strong>. Проверете заглавията във файла.'
@@ -112,7 +123,7 @@ function parseCSVToRows(text) {
   const rows = [];
   for (let i = 1; i < matrix.length; i++) {
     const cells = matrix[i];
-    if (cells.length === 1 && cells[0].trim() === '') continue; // skip empty lines
+    if (cells.length === 1 && cells[0].trim() === '') continue;
 
     const get = (key) => {
       const idx = map[key];
@@ -145,14 +156,7 @@ function normalizeHeader(h) {
 }
 
 function detectHeaders(headers) {
-  const H = {
-    product: undefined,
-    qty: undefined,
-    date: undefined,
-    group: undefined,
-    class: undefined
-  };
-
+  const H = { product: undefined, qty: undefined, date: undefined, group: undefined, class: undefined };
   const synonyms = {
     product: ['продукт','артикул','име','product','item','product name','име на продукт'],
     qty: ['количество','брой','брой продажби','qty','quantity','бройка'],
@@ -160,25 +164,19 @@ function detectHeaders(headers) {
     group: ['продуктова група','група','категория','product group','group','category'],
     class: ['продуктов клас','клас','product class','class','grade']
   };
-
   headers.forEach((h, idx) => {
     for (const key of Object.keys(synonyms)) {
-      if (synonyms[key].some(s => h === s)) {
-        H[key] ??= idx;
-      }
+      if (synonyms[key].some(s => h === s)) H[key] ??= idx;
     }
   });
-
   return H;
 }
 
 function detectDelimiter(text) {
   const sample = text.slice(0, 2000);
   const candidates = [',', ';', '\t', '|'];
-  let best = ',';
-  let bestScore = -1;
+  let best = ',', bestScore = -1;
   for (const d of candidates) {
-    // score = avg count of delimiter per non-empty line
     const lines = sample.split(/\r?\n/).filter(l => l.trim().length);
     const counts = lines.map(l => (l.match(new RegExp(escapeRegex(d), 'g')) || []).length);
     const score = counts.reduce((a,b)=>a+b,0) / (lines.length || 1);
@@ -186,43 +184,29 @@ function detectDelimiter(text) {
   }
   return best;
 }
-
 function escapeRegex(s){ return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 
-/** Robust-ish CSV parser (RFC4180-ish) */
+/** RFC4180-ish CSV parser */
 function parseCSV(text, delimiter) {
   const rows = [];
-  let row = [];
-  let field = '';
+  let row = [], field = '';
   let i = 0, inQuotes = false;
 
   while (i < text.length) {
     const c = text[i];
-
     if (c === '"') {
-      if (inQuotes && text[i+1] === '"') {
-        field += '"'; i += 2; continue; // escaped quote
-      }
+      if (inQuotes && text[i+1] === '"') { field += '"'; i += 2; continue; }
       inQuotes = !inQuotes; i++; continue;
     }
-
-    if (!inQuotes && (c === delimiter)) {
-      row.push(field); field = ''; i++; continue;
-    }
-
+    if (!inQuotes && (c === delimiter)) { row.push(field); field = ''; i++; continue; }
     if (!inQuotes && (c === '\n' || c === '\r')) {
-      // handle CRLF / LF
       if (c === '\r' && text[i+1] === '\n') i++;
       row.push(field); field = '';
-      rows.push(row); row = [];
-      i++; continue;
+      rows.push(row); row = []; i++; continue;
     }
-
     field += c; i++;
   }
-
-  row.push(field);
-  rows.push(row);
+  row.push(field); rows.push(row);
   return rows;
 }
 
@@ -231,23 +215,17 @@ function stringToNumberInt(v) {
   if (v == null) return NaN;
   let s = String(v).trim();
   if (!s) return NaN;
-  // remove everything except digits, minus sign and separators
   s = s.replace(/[^0-9,\.\-]/g, '');
-  // If both comma and dot exist, assume comma is thousands and remove it
   if (s.includes(',') && s.includes('.')) s = s.replace(/,/g, '');
-  // If only comma exists, treat it as decimal point (then round)
   if (s.includes(',') && !s.includes('.')) s = s.replace(',', '.');
   const n = Number(s);
-  return Math.round(n); // quantity assumed as integer
+  return Math.round(n);
 }
-
 function parseDateSafe(v) {
   if (!v) return null;
   let s = String(v).trim();
-  // try ISO first
   let d = new Date(s);
   if (!isNaN(d)) return d;
-  // try DD/MM/YYYY or DD.MM.YYYY
   const m = s.match(/^(\d{1,2})[\/\.\-](\d{1,2})[\/\.\-](\d{2,4})$/);
   if (m) {
     const [_, dd, mm, yyyy] = m;
@@ -257,44 +235,33 @@ function parseDateSafe(v) {
   }
   return null;
 }
+function formatDateYYYYMMDD(d){
+  if (!(d instanceof Date) || isNaN(d)) return '';
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  const dd = String(d.getDate()).padStart(2,'0');
+  return `${yyyy}-${mm}-${dd}`;
+}
 
-function showAlert(html) {
-  els.alert.innerHTML = html;
-  els.alert.classList.remove('hidden');
-}
-function hideAlert() {
-  els.alert.classList.add('hidden');
-  els.alert.innerHTML = '';
-}
+function showAlert(html) { els.alert.innerHTML = html; els.alert.classList.remove('hidden'); }
+function hideAlert() { els.alert.classList.add('hidden'); els.alert.innerHTML = ''; }
 
 /* ========================== Filters & Render ========================== */
 function populateFilterOptions(rows) {
-  // unique group/class values
-  const groups = new Set();
-  const classes = new Set();
-
-  rows.forEach(r => {
-    if (r.group) groups.add(r.group);
-    if (r.class) classes.add(r.class);
-  });
-
-  // reset selects
+  const groups = new Set(), classes = new Set();
+  rows.forEach(r => { if (r.group) groups.add(r.group); if (r.class) classes.add(r.class); });
   resetSelect(els.groupSelect, groups);
   resetSelect(els.classSelect, classes);
 }
-
 function resetSelect(select, valuesSet) {
   const current = select.value;
   select.innerHTML = '<option value="">Всички</option>';
   [...valuesSet].sort(localeSort).forEach(v => {
     const opt = document.createElement('option');
-    opt.value = v;
-    opt.textContent = v;
-    select.appendChild(opt);
+    opt.value = v; opt.textContent = v; select.appendChild(opt);
   });
   if ([...valuesSet].includes(current)) select.value = current;
 }
-
 function localeSort(a,b){ return String(a).localeCompare(String(b), 'bg'); }
 
 function applyFilters(rows) {
@@ -310,8 +277,6 @@ function applyFilters(rows) {
     if (g && r.group !== g) return false;
     if (c && r.class !== c) return false;
     if (q && !String(r.product).toLowerCase().includes(q)) return false;
-    // if there is a date filter but row has no date -> keep it (policy choice) or exclude?
-    // We'll keep it unless both s and e exist:
     if ((s || e) && r.date === null) return false;
     return true;
   });
@@ -319,11 +284,8 @@ function applyFilters(rows) {
 function addOneDay(d){ const x = new Date(d); x.setDate(x.getDate()+1); return x; }
 
 function aggregateByProduct(rows) {
-  /** @type {Record<string, number>} */
   const map = {};
-  for (const r of rows) {
-    map[r.product] = (map[r.product] || 0) + (r.qty || 0);
-  }
+  for (const r of rows) map[r.product] = (map[r.product] || 0) + (r.qty || 0);
   return Object.entries(map).map(([product, qty]) => ({ product, qty }));
 }
 
@@ -342,18 +304,15 @@ function render() {
 
   const agg = aggregateByProduct(filtered).sort((a,b)=> b.qty - a.qty);
 
-  // build table
   els.tableBody.innerHTML = '';
   if (!agg.length) {
     const tr = document.createElement('tr');
     const td = document.createElement('td');
-    td.colSpan = 2;
-    td.className = 'empty';
+    td.colSpan = 2; td.className = 'empty';
     td.textContent = 'Няма резултати за показване. Променете филтрите или качете файл.';
     tr.appendChild(td); els.tableBody.appendChild(tr);
     return;
   }
-
   for (const row of agg) {
     const tr = document.createElement('tr');
     const tdName = document.createElement('td');
@@ -364,6 +323,145 @@ function render() {
     tr.appendChild(tdName); tr.appendChild(tdQty);
     els.tableBody.appendChild(tr);
   }
+}
+
+/* ========================== Suggestions Engine ========================== */
+function renderSuggestions(allRows){
+  const { fastMovers, issues } = makeSuggestions(allRows);
+
+  // visibility
+  const show = fastMovers.length || issues.length;
+  els.suggestionsSection.classList.toggle('hidden', !show);
+
+  // stats
+  els.fastCount.textContent = nf.format(fastMovers.length);
+  els.issueCount.textContent = nf.format(issues.length);
+
+  // table 1: предложени наличности
+  els.suggestLoadBody.innerHTML = '';
+  if (!fastMovers.length) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 4; td.className = 'empty'; td.textContent = 'Няма предложения.';
+    tr.appendChild(td); els.suggestLoadBody.appendChild(tr);
+  } else {
+    for (const it of fastMovers) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${it.product}</td>
+        <td class="text-right">${nf.format(it.qty30)}</td>
+        <td class="text-right">${nf.format(it.perDay)}</td>
+        <td class="text-right">${nf.format(it.minStock)}</td>
+      `;
+      els.suggestLoadBody.appendChild(tr);
+    }
+  }
+
+  // table 2: редове за преглед / отхвърляне
+  els.suggestDiscardBody.innerHTML = '';
+  if (!issues.length) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 4; td.className = 'empty'; td.textContent = 'Няма проблемни редове.';
+    tr.appendChild(td); els.suggestDiscardBody.appendChild(tr);
+  } else {
+    for (const it of issues.slice(0, MAX_ISSUE_ROWS)) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${it.reason}</td>
+        <td>${it.product}</td>
+        <td class="text-right">${nf.format(it.qty)}</td>
+        <td>${it.date}</td>
+      `;
+      els.suggestDiscardBody.appendChild(tr);
+    }
+    if (issues.length > MAX_ISSUE_ROWS) {
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = 4; td.className = 'empty';
+      td.textContent = `Показани са първите ${MAX_ISSUE_ROWS} от ${issues.length} реда.`;
+      tr.appendChild(td); els.suggestDiscardBody.appendChild(tr);
+    }
+  }
+}
+
+/**
+ * Основна логика за предложения:
+ * - Бързооборотни = сума на продажбите по продукт в последните LOOKBACK_DAYS
+ *   (ако няма дати -> разглеждаме целия набор като 30 дни).
+ *   Предложена мин. наличност = средно/ден × COVERAGE_DAYS.
+ * - Проблемни редове: празен продукт, qty<=0, липсва/невалидна дата, бъдеща дата, дубликати.
+ */
+function makeSuggestions(rows){
+  if (!rows.length) return { fastMovers: [], issues: [] };
+
+  // 1) Граници за последните LOOKBACK_DAYS
+  const dates = rows.map(r => r.date).filter(d => d instanceof Date && !isNaN(d));
+  const hasDates = dates.length > 0;
+  const refMax = hasDates ? new Date(Math.max(...dates.map(d => d.getTime()))) : new Date();
+  const start = new Date(refMax); start.setDate(start.getDate() - (LOOKBACK_DAYS - 1));
+
+  // 2) Продажби за последните LOOKBACK_DAYS
+  const recent = hasDates ? rows.filter(r => r.date && r.date >= start && r.date <= addOneDay(refMax)) : rows.slice();
+  const byProductRecent = {};
+  for (const r of recent) byProductRecent[r.product] = (byProductRecent[r.product] || 0) + (r.qty || 0);
+
+  let fastArr = Object.entries(byProductRecent)
+    .map(([product, qty30]) => {
+      const perDay = qty30 / LOOKBACK_DAYS;
+      const minStock = Math.ceil(perDay * COVERAGE_DAYS);
+      return { product, qty30, perDay, minStock };
+    })
+    .filter(x => x.qty30 >= MIN_QTY_FAST)
+    .sort((a,b)=> b.qty30 - a.qty30)
+    .slice(0, TOP_N_FAST);
+
+  // 3) Проблемни редове
+  const issues = [];
+  // дубликати: по продукт+qty+date+group+class
+  const seen = new Map();
+  for (const r of rows) {
+    const key = [
+      r.product,
+      r.qty,
+      r.date ? formatDateYYYYMMDD(r.date) : '',
+      r.group,
+      r.class
+    ].join('|');
+
+    const count = (seen.get(key) || 0) + 1;
+    seen.set(key, count);
+    if (count > 1) {
+      issues.push({ reason: 'Дубликат на ред', product: r.product, qty: r.qty, date: formatDateYYYYMMDD(r.date) });
+    }
+
+    if (!r.product || r.product === '(без име)') {
+      issues.push({ reason: 'Празно/липсващо име', product: r.product, qty: r.qty, date: formatDateYYYYMMDD(r.date) });
+    }
+    if (!isFinite(r.qty) || r.qty === 0) {
+      issues.push({ reason: 'Нула/невалидно количество', product: r.product, qty: r.qty, date: formatDateYYYYMMDD(r.date) });
+    }
+    if (r.qty < 0) {
+      issues.push({ reason: 'Отрицателно количество (връщане?)', product: r.product, qty: r.qty, date: formatDateYYYYMMDD(r.date) });
+    }
+    if (!r.date) {
+      issues.push({ reason: 'Липсва/невалидна дата', product: r.product, qty: r.qty, date: '' });
+    } else {
+      const todayPlus1 = addOneDay(new Date());
+      if (r.date > todayPlus1) {
+        issues.push({ reason: 'Бъдеща дата', product: r.product, qty: r.qty, date: formatDateYYYYMMDD(r.date) });
+      }
+    }
+  }
+
+  // премахни очевидни повтарящи записи "празно име, нула qty" и т.н. (де-дуплициране по reason+product+qty+date)
+  const uniq = new Map();
+  for (const it of issues) {
+    const k = `${it.reason}|${it.product}|${it.qty}|${it.date}`;
+    if (!uniq.has(k)) uniq.set(k, it);
+  }
+
+  return { fastMovers: fastArr, issues: [...uniq.values()] };
 }
 
 /* ========================== Dropzone UX ========================== */
@@ -378,13 +476,8 @@ function setupDropzone(zone, onFileDropped) {
     const f = e.dataTransfer?.files?.[0];
     if (f) onFileDropped(f);
   });
-
-  // keyboard support: Enter/Space to open file dialog
   zone.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      els.fileInput.click();
-    }
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); els.fileInput.click(); }
   });
 }
 
