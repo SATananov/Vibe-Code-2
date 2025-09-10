@@ -1,0 +1,111 @@
+/* ================  Design tokens  ================ */
+:root{
+  --bg: #0f172a;           /* slate-900 */
+  --panel: #111827;        /* gray-900 */
+  --card: #111827;
+  --text: #e5e7eb;         /* gray-200 */
+  --muted: #9ca3af;        /* gray-400 */
+  --primary: #22d3ee;      /* cyan-400 */
+  --accent: #a78bfa;       /* violet-400 */
+  --danger: #f87171;       /* red-400 */
+  --ok: #34d399;           /* green-400 */
+  --border: #1f2937;       /* gray-800 */
+  --shadow: 0 10px 30px rgba(0,0,0,.35);
+  --radius: 16px;
+}
+
+@media (prefers-color-scheme: light){
+  :root{
+    --bg:#f8fafc; --panel:#ffffff; --card:#ffffff; --text:#0f172a; --muted:#64748b;
+    --border:#e2e8f0; --shadow:0 10px 30px rgba(2,6,23,.06);
+  }
+}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans";
+  background: linear-gradient(180deg, var(--bg) 0%, #0b1220 100%);
+  color:var(--text);
+}
+
+/* ================  Layout  ================ */
+.app{
+  max-width: 1100px;
+  margin: 32px auto;
+  padding: 0 16px 48px;
+}
+header{
+  margin-bottom: 18px;
+}
+h1{
+  margin: 0 0 6px;
+  font-size: clamp(28px, 3.4vw, 40px);
+  letter-spacing: .3px;
+}
+.subtitle{
+  margin:0;
+  color:var(--muted);
+  font-size: 14px;
+}
+
+/* ================  Controls  ================ */
+.controls{
+  display:grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap:12px;
+  margin:18px 0 14px;
+}
+.control{
+  grid-column: span 12;
+}
+@media (min-width:640px){
+  .control.sm-6{ grid-column: span 6; }
+  .control.sm-4{ grid-column: span 4; }
+  .control.sm-3{ grid-column: span 3; }
+}
+label{
+  display:block;
+  font-size:12px;
+  color:var(--muted);
+  margin:0 0 6px;
+}
+input[type="date"], select, input[type="text"]{
+  width:100%;
+  padding:10px 12px;
+  border:1px solid var(--border);
+  border-radius:12px;
+  background:var(--panel);
+  color:var(--text);
+  outline:none;
+  transition:.15s border, .15s box-shadow, .15s transform;
+}
+input:focus, select:focus{
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 25%, transparent);
+}
+
+/* ================  Dropzone  ================ */
+.dropzone{
+  border:2px dashed var(--border);
+  background: color-mix(in srgb, var(--panel) 94%, var(--primary) 6%);
+  padding:22px;
+  border-radius: var(--radius);
+  display:flex; align-items:center; gap:14px; justify-content:space-between;
+  transition:.2s border-color,.2s transform,.2s background;
+}
+.dropzone:hover{ transform: translateY(-1px); }
+.dropzone.is-dragover{
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--panel) 85%, var(--primary) 15%);
+}
+.dropzone .hint{ color:var(--muted); font-size:13px; }
+.visually-hidden{ position:absolute !important; width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0; }
+
+/* ================  Buttons  ================ */
+.btn{
+  appearance:none; border:1px solid var(--border); background:var(--panel); color:var(--text);
+  padding:10px 14px; border-radius:12px; font-weight:600; cursor:pointer; transition:.15s transform,.15s background,.15s border-color,.15s box-shadow;
+}
+.btn:focus{ outline:none; box-shadow:0 0 0 3px color-mix(in srgb, var(--primary)
