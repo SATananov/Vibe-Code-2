@@ -15,8 +15,10 @@
       </p>
     </header>
 
-    <!-- Dropzone -->
+    <!-- Alerts -->
     <div id="alert" class="alert hidden" role="alert" aria-live="polite"></div>
+
+    <!-- Dropzone -->
     <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Пуснете CSV файл тук или изберете от бутон">
       <div>
         <strong>Плъзнете и пуснете .csv тук</strong>
@@ -80,6 +82,56 @@
       </div>
     </section>
 
+    <!-- Suggestions -->
+    <section id="suggestionsSection" class="hidden" aria-label="Предложения">
+      <div class="stats" style="margin-top:8px">
+        <div class="stat">
+          <div class="label">Бързооборотни (30 дни)</div>
+          <div id="fastCount" class="value">0</div>
+        </div>
+        <div class="stat">
+          <div class="label">Редове за преглед</div>
+          <div id="issueCount" class="value">0</div>
+        </div>
+      </div>
+
+      <div class="table-wrap" style="margin-top:10px">
+        <div class="table-scroller">
+          <table aria-label="Предложение за наличности">
+            <thead>
+              <tr>
+                <th>Продукт</th>
+                <th class="text-right">Продажби (30 дни)</th>
+                <th class="text-right">Средно/ден</th>
+                <th class="text-right">Предложена мин. наличност (14 дни)</th>
+              </tr>
+            </thead>
+            <tbody id="suggestLoadBody">
+              <tr><td colspan="4" class="empty">Няма предложения.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="table-wrap" style="margin-top:10px">
+        <div class="table-scroller">
+          <table aria-label="Редове за преглед/отхвърляне">
+            <thead>
+              <tr>
+                <th>Причина</th>
+                <th>Продукт</th>
+                <th class="text-right">Количество</th>
+                <th>Дата</th>
+              </tr>
+            </thead>
+            <tbody id="suggestDiscardBody">
+              <tr><td colspan="4" class="empty">Няма проблемни редове.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
     <!-- Results table -->
     <div class="table-wrap">
       <div class="table-scroller">
@@ -106,4 +158,3 @@
   <script src="app.js" defer></script>
 </body>
 </html>
-
