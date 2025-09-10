@@ -1,140 +1,109 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="bg">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Продажби от Excel/CSV → Сумиране</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Брояч на продадени продукти (CSV от Excel)</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-<header class="container">
-  <h1>Калкулатор на продадени продукти</h1>
-  <p class="subtitle">
-    Качи CSV файл (експортиран от Excel). Избери кои колони какво означават, приложи филтри и виж резултата.
-  </p>
-</header>
+  <div class="app">
+    <header>
+      <h1>Продажби от Excel → общо продадени бройки</h1>
+      <p class="subtitle">
+        Качете CSV файл (експортиран от Excel). Всичко се обработва локално в браузъра.
+      </p>
+    </header>
 
-<main class="container">
-  <section class="card" aria-labelledby="upload-title">
-    <h2 id="upload-title">Качване на файл</h2>
-    <div class="grid">
+    <!-- Dropzone -->
+    <div id="alert" class="alert hidden" role="alert" aria-live="polite"></div>
+    <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Пуснете CSV файл тук или изберете от бутон">
       <div>
-        <label for="file">CSV файл</label>
-        <input id="file" type="file" accept=".csv,text/csv" />
-        <small class="muted">
-          *От Excel → Save As → <strong>CSV (Comma delimited)</strong>. Поддържат се , ; или таб.
-        </small>
+        <strong>Плъзнете и пуснете .csv тук</strong>
+        <div class="hint">или натиснете бутона вдясно, за да изберете файл</div>
       </div>
 
-      <div>
-        <label for="encoding">Кодировка</label>
-        <select id="encoding" aria-label="Encoding">
-          <option value="utf-8" selected>UTF-8 (по подразбиране)</option>
-          <option value="windows-1251">Windows-1251</option>
+      <label class="btn primary" for="fileInput">
+        Избор на файл
+        <input id="fileInput" class="visually-hidden" type="file" accept=".csv" />
+      </label>
+    </div>
+
+    <!-- Filters -->
+    <section class="controls" aria-label="Филтри">
+      <div class="control sm-3">
+        <label for="dateStart">Начална дата</label>
+        <input type="date" id="dateStart" />
+      </div>
+      <div class="control sm-3">
+        <label for="dateEnd">Крайна дата</label>
+        <input type="date" id="dateEnd" />
+      </div>
+      <div class="control sm-3">
+        <label for="groupSelect">Продуктова група</label>
+        <select id="groupSelect" aria-label="Изберете продуктова група">
+          <option value="">Всички</option>
         </select>
       </div>
-    </div>
+      <div class="control sm-3">
+        <label for="classSelect">Продуктов клас</label>
+        <select id="classSelect" aria-label="Изберете продуктов клас">
+          <option value="">Всички</option>
+        </select>
+      </div>
+      <div class="control sm-3">
+        <label for="searchInput">Търсене по продукт</label>
+        <input type="text" id="searchInput" placeholder="Започнете да пишете..." />
+      </div>
+      <div class="control sm-3" style="display:flex;align-items:flex-end">
+        <button id="clearFiltersBtn" class="btn ghost" type="button">Изчисти филтрите</button>
+      </div>
+    </section>
 
-    <div id="fileInfo" class="info"></div>
-    <div id="sample" class="sample" role="table" aria-label="Преглед на данните (първите редове)"></div>
-  </section>
+    <!-- Stats -->
+    <section class="stats" aria-label="Статистика">
+      <div class="stat fade-in">
+        <div class="label">Общо бройки</div>
+        <div id="totalQty" class="value">0</div>
+      </div>
+      <div class="stat fade-in">
+        <div class="label">Уникални артикули</div>
+        <div id="uniqueCount" class="value">0</div>
+      </div>
+      <div class="stat fade-in">
+        <div class="label">Редове във файла</div>
+        <div id="rowsAll" class="value">0</div>
+      </div>
+      <div class="stat fade-in">
+        <div class="label">След филтър</div>
+        <div id="rowsFiltered" class="value">0</div>
+      </div>
+    </section>
 
-  <section class="card" aria-labelledby="mapping-title">
-    <h2 id="mapping-title">Съотнасяне на колони</h2>
-    <div class="grid columns-5">
-      <div>
-        <label for="col-date">Колона „Дата“</label>
-        <select id="col-date"></select>
-        <small class="muted">По избор (за филтриране по диапазон)</small>
-      </div>
-      <div>
-        <label for="col-product">Колона „Продукт“</label>
-        <select id="col-product"></select>
-      </div>
-      <div>
-        <label for="col-qty">Колона „Количество“</label>
-        <select id="col-qty"></select>
-        <small class="muted">Ако липсва, всяка редица = 1 бр.</small>
-      </div>
-      <div>
-        <label for="col-group">Колона „Продуктова група“</label>
-        <select id="col-group"></select>
-        <small class="muted">По избор</small>
-      </div>
-      <div>
-        <label for="col-class">Колона „Продуктов клас“</label>
-        <select id="col-class"></select>
-        <small class="muted">По избор</small>
-      </div>
-    </div>
-  </section>
-
-  <section class="card" aria-labelledby="filters-title">
-    <h2 id="filters-title">Филтри</h2>
-    <div class="grid columns-4">
-      <div>
-        <label for="start">Начална дата</label>
-        <input id="start" type="date" />
-      </div>
-      <div>
-        <label for="end">Крайна дата</label>
-        <input id="end" type="date" />
-      </div>
-      <div>
-        <label for="groupFilter">Продуктова група</label>
-        <input id="groupFilter" type="text" placeholder="напр. Храни, Напитки (по избор)" />
-        <small class="muted">Може няколко, разделени със запетая (точно съвпадение)</small>
-      </div>
-      <div>
-        <label for="classFilter">Продуктов клас</label>
-        <input id="classFilter" type="text" placeholder="по избор" />
+    <!-- Results table -->
+    <div class="table-wrap">
+      <div class="table-scroller">
+        <table id="resultsTable" aria-label="Разбивка по продукт">
+          <thead>
+            <tr>
+              <th scope="col">Продукт</th>
+              <th scope="col" class="text-right">Количество</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody">
+            <tr><td colspan="2" class="empty">Качете CSV файл, за да видите резултатите.</td></tr>
+          </tbody>
+        </table>
       </div>
     </div>
 
-    <div class="actions">
-      <button id="btn-calc" class="primary">Пресметни</button>
-      <button id="btn-reset" class="ghost">Нулирай</button>
-      <span id="status" class="status" role="status" aria-live="polite"></span>
-    </div>
-  </section>
+    <footer>
+      © 2025 • Локална обработка. Нужен е CSV (експорт от Excel). |
+      <a href="README.md" target="_blank" rel="noopener">README</a>
+    </footer>
+  </div>
 
-  <section class="card" aria-labelledby="results-title">
-    <h2 id="results-title">Резултати</h2>
-    <div id="summary" class="summary-cards"></div>
-    <div class="grid">
-      <div>
-        <h3>Разбивка по продукт</h3>
-        <div id="byProduct" class="table-wrap"></div>
-      </div>
-      <div>
-        <h3>Разбивка по продуктова група</h3>
-        <div id="byGroup" class="table-wrap"></div>
-      </div>
-      <div>
-        <h3>Разбивка по продуктов клас</h3>
-        <div id="byClass" class="table-wrap"></div>
-      </div>
-    </div>
-  </section>
-
-  <section class="card" aria-labelledby="help-title">
-    <h2 id="help-title">Как да използвам</h2>
-    <ol>
-      <li>В Excel: <em>File → Save As → CSV (Comma delimited)</em>. Ако имаш ; или таб – също работи.</li>
-      <li>Качи файла и изчакай да се визуализират първите редове.</li>
-      <li>Избери коя колона е <strong>Дата</strong>, <strong>Продукт</strong>, <strong>Количество</strong> и по желание Група/Клас.</li>
-      <li>Задай филтри (начална/крайна дата, група/клас) и натисни <strong>Пресметни</strong>.</li>
-    </ol>
-    <p class="muted">
-      Поддържани формати за дати: <code>YYYY-MM-DD</code>, <code>DD.MM.YYYY</code>, <code>DD/MM/YYYY</code>. Количествата могат да са цели или десетични – запетаята се преобразува автоматично.
-    </p>
-  </section>
-</main>
-
-<footer class="container footer">
-  <small>© 2025 Продажби Калкулатор • Изработено с ♥</small>
-</footer>
-
-<script src="app.js"></script>
+  <script src="app.js" defer></script>
 </body>
 </html>
+
